@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 华为手环心率监测系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='lib/lightweight-charts.standalone.production.js') }}"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>💓 HeartStock - 华为手环心率炒股模拟器</h1>
+            <p>股价 = 心率 · 初始资金 10,000 元 · <a href="https://github.com/maicarons/heartstock" target="_blank" style="color: #e94560;">GitHub</a></p>
+            <div class="status-bar">
+                <div class="status-item">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="connectionStatus">连接中...</span>
+                </div>
+                <div class="status-item">
+                    <span>📡 设备: HUAWEI Band HR-7B5</span>
+                </div>
+                <div class="status-item">
+                    <span id="lastUpdate">最后更新: --:--:--</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="dashboard">
+            <!-- 心率显示 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <div class="card-title">
+                        <span class="icon">💓</span>
+                        实时心率
+                    </div>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body">
+                    <div class="heart-rate-display">
+                        <div class="heart-icon">❤️</div>
+                        <div class="heart-rate-value" id="currentHeartRate">--</div>
+                        <div class="heart-rate-unit">次/分钟 (BPM)</div>
+                        <div class="heart-rate-status" id="heartRateStatus">等待数据...</div>
+                        <div class="heart-rate-range">
+                            <div class="range-item"><div class="range-label">偏低</div><div class="range-value range-low">&lt;60</div></div>
+                            <div class="range-item"><div class="range-label">正常</div><div class="range-value range-normal">60-100</div></div>
+                            <div class="range-item"><div class="range-label">偏高</div><div class="range-value range-elevated">100-120</div></div>
+                            <div class="range-item"><div class="range-label">过快</div><div class="range-value range-high">&gt;120</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 统计数据 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <div class="card-title">
+                        <span class="icon">📊</span>
+                        统计数据
+                    </div>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body">
+                    <div class="stats-grid">
+                        <div class="stat-item"><div class="stat-label">平均心率</div><div class="stat-value" id="avgHeartRate">--</div><div class="stat-label">BPM</div></div>
+                        <div class="stat-item"><div class="stat-label">最低心率</div><div class="stat-value" id="minHeartRate">--</div><div class="stat-label">BPM</div></div>
+                        <div class="stat-item"><div class="stat-label">最高心率</div><div class="stat-value" id="maxHeartRate">--</div><div class="stat-label">BPM</div></div>
+                        <div class="stat-item"><div class="stat-label">数据条数</div><div class="stat-value" id="dataCount">--</div><div class="stat-label">条</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 心率曲线图 -->
+            <div class="card chart-container">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <div class="card-title">
+                        <span class="icon">📈</span>
+                        心率变化曲线
+                    </div>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body">
+                    <div class="chart-tabs">
+                        <button class="chart-tab active" data-chart="realtime">实时曲线</button>
+                        <button class="chart-tab" data-chart="kline-1">1分K线</button>
+                        <button class="chart-tab" data-chart="kline-5">5分K线</button>
+                        <button class="chart-tab" data-chart="kline-10">10分K线</button>
+                        <button class="chart-tab" data-chart="kline-30">30分K线</button>
+                        <button class="chart-tab" data-chart="kline-60">60分K线</button>
+                    </div>
+                    <div class="chart-wrapper" id="realtimeChartContainer">
+                        <div id="realtimeChart" style="width:100%;height:350px"></div>
+                    </div>
+                    <div class="chart-wrapper kline-wrapper" id="klineChartContainer" style="display: none;">
+                        <div id="klineChart" style="width:100%;height:300px"></div>
+                        <div id="macdChart" style="width:100%;height:200px;margin-top:10px"></div>
+                        <div class="kline-legend">
+                            <span class="legend-item"><span class="legend-color" style="background:#26a69a"></span><span>上涨</span></span>
+                            <span class="legend-item"><span class="legend-color" style="background:#ef5350"></span><span>下跌</span></span>
+                            <span class="legend-item"><span class="legend-color" style="background:#2196F3"></span><span>MACD</span></span>
+                            <span class="legend-item"><span class="legend-color" style="background:#FF9800"></span><span>信号线</span></span>
+                            <span class="kline-info" id="klineInfo">周期: 1分钟 | 数据点: 0</span>
+                            <span class="kline-info" id="macdInfo" style="color:#8892b0;font-size:0.8rem">MACD 需要至少 34 个数据点</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 交易模拟 -->
+            <div class="card trading-container">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <div class="card-title">
+                        <span class="icon">📈</span>
+                        心率炒股模拟器
+                        <span style="margin-left:auto;font-size:0.8rem;color:#8892b0">股价 = 心率 | 初始资金 10,000 元</span>
+                    </div>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body">
+                    <div class="trading-dashboard">
+                        <div class="trading-stat"><div class="trading-stat-label">当前资金</div><div class="trading-stat-value" id="tradingCapital">10,000</div></div>
+                        <div class="trading-stat"><div class="trading-stat-label">持有股票</div><div class="trading-stat-value" id="tradingShares">0 股</div></div>
+                        <div class="trading-stat"><div class="trading-stat-label">当前股价</div><div class="trading-stat-value" id="tradingPrice">¥100</div></div>
+                        <div class="trading-stat"><div class="trading-stat-label">总资产</div><div class="trading-stat-value" id="tradingValue">10,000</div></div>
+                        <div class="trading-stat"><div class="trading-stat-label">总盈亏</div><div class="trading-stat-value" id="tradingProfit">0</div></div>
+                        <div class="trading-stat"><div class="trading-stat-label">收益率</div><div class="trading-stat-value" id="tradingProfitRate">0%</div></div>
+                        <div class="trading-stat"><div class="trading-stat-label">仓位</div><div class="trading-stat-value" id="tradingPosition">0%</div></div>
+                        <div class="trading-stat"><div class="trading-stat-label">交易次数</div><div class="trading-stat-value" id="tradingCount">0</div></div>
+                    </div>
+
+                    <div class="trading-section">
+                        <div class="trading-section-title"><span>💰</span>手动交易</div>
+                        <div class="form-row">
+                            <input type="number" id="tradeAmount" placeholder="买入金额（留空=全仓）">
+                            <button class="trading-btn trading-btn-buy" onclick="doBuy()">买入</button>
+                            <button class="trading-btn trading-btn-sell" onclick="doSell()">卖出</button>
+                            <button class="trading-btn trading-btn-secondary" onclick="doReset()">重置</button>
+                        </div>
+                    </div>
+
+                    <div class="trading-section">
+                        <div class="trading-section-title"><span>📋</span>条件单</div>
+                        <div class="form-row">
+                            <select id="orderType"><option value="buy">买入</option><option value="sell">卖出</option></select>
+                            <input type="text" id="orderCondition" placeholder="条件: heart_rate < 75">
+                            <input type="number" id="orderShares" placeholder="股数" style="width:80px">
+                            <button class="trading-btn trading-btn-primary" onclick="doAddOrder()">添加</button>
+                        </div>
+                        <div id="conditionalOrdersList"><div style="text-align:center;color:#8892b0;padding:10px">暂无条件单</div></div>
+                    </div>
+
+                    <div class="trading-section">
+                        <div class="trading-section-title"><span>📊</span>交易规则</div>
+                        <div class="trading-rules">
+                            <div class="rule-item"><span class="rule-icon">💹</span><span>股价 = 心率（1:1 对应）</span></div>
+                            <div class="rule-item"><span class="rule-icon">💰</span><span>初始资金: 10,000 元</span></div>
+                            <div class="rule-item"><span class="rule-icon">📦</span><span>最小交易: 1 股</span></div>
+                            <div class="rule-item"><span class="rule-icon">📋</span><span>条件单示例: heart_rate < 75</span></div>
+                            <div class="rule-item"><span class="rule-icon">🔄</span><span>刷新频率: 1 秒</span></div>
+                            <div class="rule-item"><span class="rule-icon">⚠️</span><span>模拟交易，仅供娱乐</span></div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:20px">
+                        <div class="card-title"><span class="icon">📜</span>交易记录</div>
+                        <div class="trading-history" id="tradingHistory">
+                            <div style="text-align:center;color:#8892b0;padding:20px">暂无交易记录</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 历史数据表格（放最后） -->
+            <div class="card table-container">
+                <div class="card-header" onclick="toggleCard(this)">
+                    <div class="card-title">
+                        <span class="icon">📋</span>
+                        历史数据记录
+                    </div>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-body">
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead><tr><th>序号</th><th>时间</th><th>心率 (BPM)</th><th>状态</th></tr></thead>
+                            <tbody id="dataTableBody">
+                                <tr><td colspan="4" style="text-align:center;color:#8892b0">等待数据...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>HeartStock - 华为手环心率炒股模拟器 | <a href="https://github.com/maicarons/heartstock" target="_blank" style="color: #e94560;">GitHub</a> | 股价 = 心率 | 模拟交易，仅供娱乐</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
