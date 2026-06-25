@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 基于 ESP32 和华为手环的实时心率监测系统，结合 K 线图、MACD 技术指标和心率炒股模拟器。
-
+![img.png](img.png)
 > 💡 **股价 = 心率**：心率每变化 1 bpm，股价变化 1 元
 
 ## ✨ 功能特性
